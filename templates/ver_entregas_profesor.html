@@ -17,7 +17,7 @@
         <tbody>
             {% for entrega in entregas %}
             <tr>
-                <td>{{ entrega.nombre_estudiante }}</td>
+                <td>{{ entrega.estudiante.nombre }}</td>
                 <td>{{ entrega.titulo_entrega }}</td>
                 <td>
                     <a href="{{ url_for('download_file', folder='entregas', filename=entrega.id_estudiante ~ '_' ~ entrega.nombre_archivo) }}" >

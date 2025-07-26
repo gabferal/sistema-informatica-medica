@@ -1,91 +1,51 @@
 # database.py
-import sqlite3
+# Este script é para popular o banco de dados com dados iniciais.
+# Rode apenas uma vez ou quando quiser resetar o banco de dados.
+
+from app import app, db, Usuarios # Importa o app, o db e o modelo
 from werkzeug.security import generate_password_hash
 import os
 
-# Garante que o diretório 'instance' exista
-if not os.path.exists('instance'):
-    os.makedirs('instance')
+def create_database():
+    # Apaga o arquivo de banco de dados SQLite se ele existir
+    instance_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance')
+    db_file = os.path.join(instance_path, 'curso.db')
+    if os.path.exists(db_file):
+        os.remove(db_file)
+        print("Banco de datos SQLite anterior eliminado.")
 
-# Conecta ao banco de dados (será criado em 'instance/curso.db')
-connection = sqlite3.connect('instance/curso.db')
-cursor = connection.cursor()
+    # O 'with app.app_context()' garante que a aplicação Flask entenda o contexto
+    with app.app_context():
+        print("Creando todas las tablas...")
+        db.create_all() # Cria as tabelas com base nos modelos
 
-print("Configurando el banco de datos...")
+        # --- Inserir usuários de exemplo ---
+        print("Insertando usuarios de ejemplo...")
 
-# --- Criar tabelas ---
+        # Verifica se os usuários já existem para não dar erro
+        if not Usuarios.query.filter_by(email='profesor@email.com').first():
+            profesor = Usuarios(
+                nombre='Profesor Admin',
+                email='profesor@email.com',
+                password_hash=generate_password_hash('admin123', method='pbkdf2:sha256'),
+                rol='profesor'
+            )
+            db.session.add(profesor)
+            print("Usuario 'profesor' creado.")
 
-# Tabela de Usuários (com roles: 'estudiante' ou 'profesor')
-cursor.execute('''
-CREATE TABLE IF NOT EXISTS usuarios (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    nombre TEXT NOT NULL,
-    email TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    rol TEXT NOT NULL CHECK(rol IN ('estudiante', 'profesor'))
-)
-''')
+        if not Usuarios.query.filter_by(email='alumno@email.com').first():
+            alumno = Usuarios(
+                nombre='Alumno Ejemplo',
+                email='alumno@email.com',
+                password_hash=generate_password_hash('alumno123', method='pbkdf2:sha256'),
+                rol='estudiante'
+            )
+            db.session.add(alumno)
+            print("Usuario 'alumno' creado.")
 
-# Tabela de Anúncios
-cursor.execute('''
-CREATE TABLE IF NOT EXISTS anuncios (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    titulo TEXT NOT NULL,
-    contenido TEXT NOT NULL,
-    fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)
-''')
+        db.session.commit() # Salva todas as inserções no banco
 
-# Tabela de Materiais de Aula
-cursor.execute('''
-CREATE TABLE IF NOT EXISTS materiales (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    titulo TEXT NOT NULL,
-    descripcion TEXT,
-    nombre_archivo TEXT NOT NULL,
-    ruta_archivo TEXT NOT NULL
-)
-''')
+        print("\n¡Configuración del banco de datos completada!")
 
-# Tabela de Entregas (trabalhos dos alunos)
-cursor.execute('''
-CREATE TABLE IF NOT EXISTS entregas (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    id_estudiante INTEGER NOT NULL,
-    id_material INTEGER, -- Opcional, se a entrega for para um material específico
-    titulo_entrega TEXT NOT NULL,
-    nombre_archivo TEXT NOT NULL,
-    ruta_archivo TEXT NOT NULL,
-    fecha_entrega TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (id_estudiante) REFERENCES usuarios(id)
-)
-''')
-
-print("Tablas creadas con éxito.")
-
-# --- Inserir usuários de exemplo ---
-
-try:
-    # Professor
-    cursor.execute(
-        "INSERT INTO usuarios (nombre, email, password_hash, rol) VALUES (?, ?, ?, ?)",
-        ('Profesor Admin', 'profesor@email.com', generate_password_hash('admin123'), 'profesor')
-    )
-    print("Usuario 'profesor' creado.")
-
-    # Aluno
-    cursor.execute(
-        "INSERT INTO usuarios (nombre, email, password_hash, rol) VALUES (?, ?, ?, ?)",
-        ('Alumno Ejemplo', 'alumno@email.com', generate_password_hash('alumno123'), 'estudiante')
-    )
-    print("Usuario 'alumno' creado.")
-
-except sqlite3.IntegrityError:
-    print("Los usuarios de ejemplo ya existen en el banco de datos.")
-
-
-# Salvar alterações e fechar conexão
-connection.commit()
-connection.close()
-
-print("¡Configuración del banco de datos completada!")
+if __name__ == '__main__':
+    create_database()

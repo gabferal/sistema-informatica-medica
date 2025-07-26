@@ -1,15 +1,15 @@
 # app.py
 import os
-import sqlite3
-from flask import Flask, render_template, request, redirect, url_for, session, g, flash, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, session, flash, send_from_directory
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 from functools import wraps
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.sql import func
 
 # --- Configuração da Aplicação ---
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'uma-chave-secreta-muito-segura-e-dificil-de-adivinhar'
-app.config['DATABASE'] = os.path.join(app.instance_path, 'curso.db')
 app.config['UPLOAD_FOLDER_MATERIALES'] = os.path.join('uploads', 'materiales')
 app.config['UPLOAD_FOLDER_ENTREGAS'] = os.path.join('uploads', 'entregas')
 
@@ -17,18 +17,51 @@ app.config['UPLOAD_FOLDER_ENTREGAS'] = os.path.join('uploads', 'entregas')
 os.makedirs(app.config['UPLOAD_FOLDER_MATERIALES'], exist_ok=True)
 os.makedirs(app.config['UPLOAD_FOLDER_ENTREGAS'], exist_ok=True)
 
-# --- Conexão com o Banco de Dados ---
-def get_db():
-    if 'db' not in g:
-        g.db = sqlite3.connect(app.config['DATABASE'])
-        g.db.row_factory = sqlite3.Row  # Permite acessar colunas por nome
-    return g.db
+# --- Configuração do Banco de Dados (PostgreSQL + Fallback para SQLite) ---
+DATABASE_URL = os.getenv('DATABASE_URL')
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+else:
+    # Se não estiver no Railway (ou outra plataforma com DATABASE_URL), usa um SQLite local.
+    instance_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance')
+    os.makedirs(instance_path, exist_ok=True)
+    DATABASE_URL = f'sqlite:///{os.path.join(instance_path, "curso.db")}'
 
-@app.teardown_appcontext
-def close_db(e=None):
-    db = g.pop('db', None)
-    if db is not None:
-        db.close()
+app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+db = SQLAlchemy(app)
+
+# --- Modelos de Dados (Tabelas como Classes Python) ---
+class Usuarios(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(150), nullable=False)
+    email = db.Column(db.String(150), unique=True, nullable=False)
+    password_hash = db.Column(db.String(256), nullable=False)
+    rol = db.Column(db.String(20), nullable=False)  # 'estudiante' ou 'profesor'
+
+class Anuncios(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    titulo = db.Column(db.String(200), nullable=False)
+    contenido = db.Column(db.Text, nullable=False)
+    fecha_creacion = db.Column(db.DateTime(timezone=True), server_default=func.now())
+
+class Materiales(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    titulo = db.Column(db.String(200), nullable=False)
+    descripcion = db.Column(db.Text)
+    nombre_archivo = db.Column(db.String(200), nullable=False)
+    ruta_archivo = db.Column(db.String(300), nullable=False)
+
+class Entregas(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    id_estudiante = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
+    titulo_entrega = db.Column(db.String(200), nullable=False)
+    nombre_archivo = db.Column(db.String(200), nullable=False)
+    ruta_archivo = db.Column(db.String(300), nullable=False)
+    fecha_entrega = db.Column(db.DateTime(timezone=True), server_default=func.now())
+    
+    estudiante = db.relationship('Usuarios', backref=db.backref('entregas', lazy=True))
 
 # --- Decoradores de Autenticação e Autorização ---
 def login_required(f):
@@ -66,16 +99,16 @@ def login():
     if request.method == 'POST':
         email = request.form['email']
         password = request.form['password']
-        db = get_db()
-        user = db.execute('SELECT * FROM usuarios WHERE email = ?', (email,)).fetchone()
+        
+        user = Usuarios.query.filter_by(email=email).first()
 
-        if user and check_password_hash(user['password_hash'], password):
+        if user and check_password_hash(user.password_hash, password):
             session.clear()
-            session['user_id'] = user['id']
-            session['user_nombre'] = user['nombre']
-            session['user_rol'] = user['rol']
+            session['user_id'] = user.id
+            session['user_nombre'] = user.nombre
+            session['user_rol'] = user.rol
             
-            if user['rol'] == 'profesor':
+            if user.rol == 'profesor':
                 return redirect(url_for('dashboard_profesor'))
             else:
                 return redirect(url_for('dashboard_estudiante'))
@@ -95,9 +128,8 @@ def logout():
 @login_required
 @role_required('profesor')
 def dashboard_profesor():
-    db = get_db()
-    anuncios = db.execute('SELECT * FROM anuncios ORDER BY fecha_creacion DESC').fetchall()
-    materiales = db.execute('SELECT * FROM materiales ORDER BY id DESC').fetchall()
+    anuncios = Anuncios.query.order_by(Anuncios.fecha_creacion.desc()).all()
+    materiales = Materiales.query.order_by(Materiales.id.desc()).all()
     return render_template('dashboard_profesor.html', anuncios=anuncios, materiales=materiales)
 
 @app.route('/publicar_anuncio', methods=['POST'])
@@ -106,9 +138,11 @@ def dashboard_profesor():
 def publicar_anuncio():
     titulo = request.form['titulo']
     contenido = request.form['contenido']
-    db = get_db()
-    db.execute('INSERT INTO anuncios (titulo, contenido) VALUES (?, ?)', (titulo, contenido))
-    db.commit()
+    
+    nuevo_anuncio = Anuncios(titulo=titulo, contenido=contenido)
+    db.session.add(nuevo_anuncio)
+    db.session.commit()
+    
     flash("Anuncio publicado con éxito.", "success")
     return redirect(url_for('dashboard_profesor'))
 
@@ -125,10 +159,10 @@ def subir_material():
         filepath = os.path.join(app.config['UPLOAD_FOLDER_MATERIALES'], filename)
         file.save(filepath)
 
-        db = get_db()
-        db.execute('INSERT INTO materiales (titulo, descripcion, nombre_archivo, ruta_archivo) VALUES (?, ?, ?, ?)',
-                   (titulo, descripcion, filename, filepath))
-        db.commit()
+        nuevo_material = Materiales(titulo=titulo, descripcion=descripcion, nombre_archivo=filename, ruta_archivo=filepath)
+        db.session.add(nuevo_material)
+        db.session.commit()
+        
         flash("Material subido con éxito.", "success")
     else:
         flash("Debe seleccionar un archivo.", "warning")
@@ -139,13 +173,7 @@ def subir_material():
 @login_required
 @role_required('profesor')
 def ver_entregas_profesor():
-    db = get_db()
-    entregas = db.execute('''
-        SELECT e.titulo_entrega, e.nombre_archivo, e.fecha_entrega, u.nombre as nombre_estudiante
-        FROM entregas e
-        JOIN usuarios u ON e.id_estudiante = u.id
-        ORDER BY e.fecha_entrega DESC
-    ''').fetchall()
+    entregas = Entregas.query.order_by(Entregas.fecha_entrega.desc()).all()
     return render_template('ver_entregas_profesor.html', entregas=entregas)
 
 
@@ -154,11 +182,9 @@ def ver_entregas_profesor():
 @login_required
 @role_required('estudiante')
 def dashboard_estudiante():
-    db = get_db()
-    anuncios = db.execute('SELECT * FROM anuncios ORDER BY fecha_creacion DESC').fetchall()
-    materiales = db.execute('SELECT * FROM materiales ORDER BY id DESC').fetchall()
-    entregas = db.execute('SELECT * FROM entregas WHERE id_estudiante = ? ORDER BY fecha_entrega DESC', 
-                          (session['user_id'],)).fetchall()
+    anuncios = Anuncios.query.order_by(Anuncios.fecha_creacion.desc()).all()
+    materiales = Materiales.query.order_by(Materiales.id.desc()).all()
+    entregas = Entregas.query.filter_by(id_estudiante=session['user_id']).order_by(Entregas.fecha_entrega.desc()).all()
     return render_template('dashboard_estudiante.html', anuncios=anuncios, materiales=materiales, entregas=entregas)
 
 @app.route('/subir_entrega', methods=['POST'])
@@ -171,15 +197,14 @@ def subir_entrega():
 
     if file and file.filename != '':
         filename = secure_filename(file.filename)
-        # Adicionar id do estudante ao nome do arquivo para evitar conflitos
         unique_filename = f"{id_estudiante}_{filename}"
         filepath = os.path.join(app.config['UPLOAD_FOLDER_ENTREGAS'], unique_filename)
         file.save(filepath)
 
-        db = get_db()
-        db.execute('INSERT INTO entregas (id_estudiante, titulo_entrega, nombre_archivo, ruta_archivo) VALUES (?, ?, ?, ?)',
-                   (id_estudiante, titulo, filename, filepath))
-        db.commit()
+        nueva_entrega = Entregas(id_estudiante=id_estudiante, titulo_entrega=titulo, nombre_archivo=filename, ruta_archivo=filepath)
+        db.session.add(nueva_entrega)
+        db.session.commit()
+        
         flash("Trabajo práctico enviado con éxito.", "success")
     else:
         flash("Debe seleccionar un archivo para enviar.", "warning")
@@ -194,19 +219,29 @@ def download_file(folder, filename):
         flash("Carpeta no válida.", "danger")
         return redirect(url_for('index'))
 
-    # Segurança: Apenas professores podem baixar entregas
+    # Segurança: Apenas professores podem baixar entregas de alunos.
+    # Alunos só podem baixar materiais.
     if folder == 'entregas' and session['user_rol'] != 'profesor':
-         # Permite que o próprio aluno baixe seu trabalho
-        db = get_db()
-        entrega = db.execute('SELECT * FROM entregas WHERE nombre_archivo = ? AND id_estudiante = ?', 
-                             (filename.split('_', 1)[1], session['user_id'])).fetchone()
-        if not entrega:
-            flash("No tiene permiso para descargar este archivo.", "danger")
-            return redirect(url_for('dashboard_estudiante'))
-
+        flash("No tiene permiso para descargar este archivo.", "danger")
+        return redirect(url_for('dashboard_estudiante'))
+        
     directory = os.path.join(os.getcwd(), 'uploads', folder)
-    return send_from_directory(directory=directory, path=filename, as_attachment=True)
+    
+    # Nome do arquivo no disco para entregas é prefixado com id do aluno.
+    if folder == 'entregas':
+        # Esta parte pode ser melhorada para buscar o id do aluno do DB,
+        # mas por enquanto vamos assumir que o nome do arquivo já vem completo.
+        # Ex: na chamada do template, o nome já é construído.
+        path_to_file = filename
+    else:
+        path_to_file = filename
 
-# --- Execução da Aplicação ---
+    return send_from_directory(directory=directory, path=path_to_file, as_attachment=True)
+
+# --- Bloco de Execução ---
 if __name__ == '__main__':
-    app.run(debug=True) # debug=True apenas para desenvolvimento local
+    with app.app_context():
+        # db.create_all() não deve ser usado em produção com Gunicorn
+        # Este bloco é principalmente para desenvolvimento local com `flask run`
+        db.create_all() 
+    app.run(debug=True)
