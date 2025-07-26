@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Informática Médica{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    {% if session.user_id %}
+    <nav class="navbar">
+        <div class="logo">Sistema de Informática Médica</div>
+        <div class="nav-links">
+            <span style="margin-right: 20px;">Bienvenido, {{ session.user_nombre }} ({{ session.user_rol }})</span>
+            <a href="{{ url_for('logout') }}">Cerrar Sesión</a>
+        </div>
+    </nav>
+    {% endif %}
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+
+</body>
+</html>

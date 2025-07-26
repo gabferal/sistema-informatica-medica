@@ -1,0 +1,92 @@
+{% extends "layout.html" %}
+
+{% block title %}Panel del Profesor{% endblock %}
+
+{% block content %}
+<h1>Panel de Administración</h1>
+
+<div class="dashboard-grid">
+    <!-- Coluna da Esquerda: Anúncios e Materiais -->
+    <div>
+        <!-- Formulário para novos anúncios -->
+        <div class="card">
+            <h2 class="card-header">Publicar Nuevo Anuncio</h2>
+            <form action="{{ url_for('publicar_anuncio') }}" method="post">
+                <div class="form-group">
+                    <label for="titulo">Título del Anuncio</label>
+                    <input type="text" name="titulo" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label for="contenido">Contenido</label>
+                    <textarea name="contenido" rows="4" class="form-control" required></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">Publicar</button>
+            </form>
+        </div>
+
+        <!-- Formulário para novos materiais -->
+        <div class="card">
+            <h2 class="card-header">Subir Nuevo Material de Clase</h2>
+            <form action="{{ url_for('subir_material') }}" method="post" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label for="titulo">Título del Material</label>
+                    <input type="text" name="titulo" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label for="descripcion">Descripción</label>
+                    <input type="text" name="descripcion" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label for="archivo">Archivo (PDF, DOCX, etc.)</label>
+                    <input type="file" name="archivo" class="form-control" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Subir Material</button>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Coluna da Direita: Visualização -->
+    <div>
+        <!-- Lista de Anúncios -->
+        <div class="card">
+            <h2 class="card-header">Anuncios Recientes</h2>
+            {% for anuncio in anuncios %}
+                <div style="border-bottom: 1px solid #eee; padding-bottom: 1rem; margin-bottom: 1rem;">
+                    <h4>{{ anuncio.titulo }}</h4>
+                    <p>{{ anuncio.contenido }}</p>
+                    <small>Publicado: {{ anuncio.fecha_creacion.split(' ')[0] }}</small>
+                </div>
+            {% else %}
+                <p>No hay anuncios publicados.</p>
+            {% endfor %}
+        </div>
+        
+        <!-- Lista de Materiais -->
+        <div class="card">
+            <h2 class="card-header">Materiales de Clase</h2>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Título</th>
+                        <th>Archivo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for material in materiales %}
+                    <tr>
+                        <td>{{ material.titulo }}</td>
+                        <td><a href="{{ url_for('download_file', folder='materiales', filename=material.nombre_archivo) }}" >{{ material.nombre_archivo }}</a></td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="2">No hay materiales disponibles.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <br>
+            <a href="{{ url_for('ver_entregas_profesor') }}" class="btn btn-secondary">Ver Trabajos Enviados por Alumnos</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

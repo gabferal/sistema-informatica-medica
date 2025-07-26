@@ -1,0 +1,39 @@
+{% extends "layout.html" %}
+
+{% block title %}Entregas de Alumnos{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1 class="card-header">Trabajos Prácticos Enviados por Alumnos</h1>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Estudiante</th>
+                <th>Título de la Entrega</th>
+                <th>Archivo Enviado</th>
+                <th>Fecha de Envío</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for entrega in entregas %}
+            <tr>
+                <td>{{ entrega.nombre_estudiante }}</td>
+                <td>{{ entrega.titulo_entrega }}</td>
+                <td>
+                    <a href="{{ url_for('download_file', folder='entregas', filename=entrega.id_estudiante ~ '_' ~ entrega.nombre_archivo) }}" >
+                        {{ entrega.nombre_archivo }}
+                    </a>
+                </td>
+                <td>{{ entrega.fecha_entrega.split(' ')[0] }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="4" style="text-align: center;">Aún no se han recibido trabajos.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <br>
+    <a href="{{ url_for('dashboard_profesor') }}" class="btn btn-primary">Volver al Panel</a>
+</div>
+{% endblock %}

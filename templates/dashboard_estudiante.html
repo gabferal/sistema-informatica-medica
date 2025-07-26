@@ -1,0 +1,107 @@
+{% extends "layout.html" %}
+
+{% block title %}Panel del Estudiante{% endblock %}
+
+{% block content %}
+<h1>Panel del Estudiante</h1>
+
+<div class="dashboard-grid">
+    <!-- Coluna da Esquerda -->
+    <div>
+        <!-- Anúncios -->
+        <div class="card">
+            <h2 class="card-header">Anuncios del Profesor</h2>
+            {% for anuncio in anuncios %}
+            <div style="border-bottom: 1px solid #eee; padding-bottom: 1rem; margin-bottom: 1rem;">
+                <h4>{{ anuncio.titulo }}</h4>
+                <p>{{ anuncio.contenido }}</p>
+                <small>Publicado: {{ anuncio.fecha_creacion.split(' ')[0] }}</small>
+            </div>
+            {% else %}
+            <p>No hay anuncios por el momento.</p>
+            {% endfor %}
+        </div>
+
+        <!-- Materiais de Aula -->
+        <div class="card">
+            <h2 class="card-header">Materiales de Clase</h2>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Título</th>
+                        <th>Descripción</th>
+                        <th>Descargar</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for material in materiales %}
+                    <tr>
+                        <td>{{ material.titulo }}</td>
+                        <td>{{ material.descripcion }}</td>
+                        <td>
+                            <a href="{{ url_for('download_file', folder='materiales', filename=material.nombre_archivo) }}" >
+                                {{ material.nombre_archivo }}
+                            </a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="3">No hay materiales disponibles.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <!-- Coluna da Direita -->
+    <div>
+        <!-- Envio de Trabalhos -->
+        <div class="card">
+            <h2 class="card-header">Enviar Trabajo Práctico</h2>
+            <form action="{{ url_for('subir_entrega') }}" method="post" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label for="titulo">Título del Trabajo</label>
+                    <input type="text" name="titulo" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label for="archivo">Seleccionar Archivo</label>
+                    <input type="file" name="archivo" class="form-control" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Enviar Trabajo</button>
+            </form>
+        </div>
+
+        <!-- Controle de Envios -->
+        <div class="card">
+            <h2 class="card-header">Mis Trabajos Enviados</h2>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Título</th>
+                        <th>Archivo</th>
+                        <th>Fecha de Envío</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entrega in entregas %}
+                    <tr>
+                        <td>{{ entrega.titulo_entrega }}</td>
+                        <td>
+                            <a href="{{ url_for('download_file', folder='entregas', filename=entrega.id_estudiante ~ '_' ~ entrega.nombre_archivo) }}">
+                                {{ entrega.nombre_archivo }}
+                            </a>
+                        </td>
+                        <td>{{ entrega.fecha_entrega.split(' ')[0] }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="3">Aún no has enviado ningún trabajo.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
